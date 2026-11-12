@@ -168,19 +168,30 @@ internal class RecordingMuxPipeline(
         val completedPath = checkNotNull(currentPath)
         val completedStartedAtMs = segmentStartedAtMs
         val boundaryAtMs = timeline.boundaryAtMs(segmentStartedAtMs, sourcePtsUs)
+        // 外置存储创建文件可能比应用私有目录慢，且可能在真正打开 MediaMuxer 时
+        // 才暴露权限或挂载错误。先把下一段完整打开，成功后再关闭当前段；否则当前
+        // 录像仍可继续，不能因为下一段不可用而把正在写入的片段一并截断。
+        val nextMuxer = muxerFactory.open(
+            nextPath,
+            orientationHintDegrees,
+            recordAudio,
+        )
         pendingAudio
             .filter {
                 timeline.audioSourcePtsUs(it.presentationTimeUs) < oldSegmentEndSourcePtsUs
             }
             .forEach(::writeAudio)
-        close(deleteOutput = false)
-        openSegment(
-            nextPath,
-            sourcePtsUs,
-            boundaryAtMs,
-            orientationHintDegrees,
-            recordAudio,
-        )
+        try {
+            close(deleteOutput = false)
+        } catch (error: Throwable) {
+            runCatching { nextMuxer.close(deleteOutput = true) }
+            throw error
+        }
+        muxer = nextMuxer
+        currentPath = nextPath
+        segmentStartedAtMs = boundaryAtMs
+        segmentBaseSourcePtsUs = sourcePtsUs
+        timeline.openSegment(sourcePtsUs)
         pendingAudio
             .filter { timeline.audioSourcePtsUs(it.presentationTimeUs) >= sourcePtsUs }
             .forEach(::writeAudio)

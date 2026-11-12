@@ -433,6 +433,10 @@ class _RecordingSettingsScreen extends StatefulWidget {
     required this.galleryAutoBackupSupported,
     required this.galleryAutoBackup,
     required this.onGalleryAutoBackupChanged,
+    required this.recordingDirectorySupported,
+    required this.recordingDirectory,
+    this.onChooseRecordingDirectory,
+    this.onRecordingDirectoryChanged,
   });
 
   final RecordingVideoCodec codec;
@@ -452,6 +456,10 @@ class _RecordingSettingsScreen extends StatefulWidget {
   final bool galleryAutoBackupSupported;
   final bool galleryAutoBackup;
   final Future<bool> Function(bool enabled) onGalleryAutoBackupChanged;
+  final bool recordingDirectorySupported;
+  final String recordingDirectory;
+  final Future<String?> Function()? onChooseRecordingDirectory;
+  final Future<String> Function(String path)? onRecordingDirectoryChanged;
 
   @override
   State<_RecordingSettingsScreen> createState() =>
@@ -466,6 +474,7 @@ class _RecordingSettingsScreenState extends State<_RecordingSettingsScreen> {
   late bool _recordAudio = widget.recordAudio;
   late bool _watermark = widget.watermark;
   late bool _galleryAutoBackup = widget.galleryAutoBackup;
+  late String _recordingDirectory = widget.recordingDirectory;
 
   @override
   Widget build(BuildContext context) {
@@ -523,6 +532,26 @@ class _RecordingSettingsScreenState extends State<_RecordingSettingsScreen> {
                   widget.onWatermarkChanged(value);
                 },
               ),
+              if (widget.recordingDirectorySupported) ...<Widget>[
+                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+                ListTile(
+                  key: const Key('recording-directory-settings'),
+                  contentPadding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
+                  title: const Text(
+                    '录像保存路径',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                  ),
+                  subtitle: Text(
+                    _recordingDirectory.isEmpty
+                        ? '应用内部存储'
+                        : _recordingDirectory,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: _editRecordingDirectory,
+                ),
+              ],
               if (widget.galleryAutoBackupSupported) ...<Widget>[
                 Divider(height: 1, thickness: 1, color: colors.outlineVariant),
                 _SettingSwitch(
@@ -550,6 +579,87 @@ class _RecordingSettingsScreenState extends State<_RecordingSettingsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _editRecordingDirectory() async {
+    final TextEditingController controller = TextEditingController(
+      text: _recordingDirectory,
+    );
+    final String? selected = await showDialog<String>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('录像保存路径'),
+        content: TextField(
+          key: const Key('recording-directory-input'),
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: '/storage/emulated/0/PackingProof',
+            helperText: '留空恢复应用内部存储',
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            key: const Key('recording-directory-picker'),
+            onPressed: widget.onChooseRecordingDirectory == null
+                ? null
+                : () async {
+                    final ScaffoldMessengerState messenger =
+                        ScaffoldMessenger.of(context);
+                    try {
+                      final String? path =
+                          await widget.onChooseRecordingDirectory!();
+                      if (path != null && dialogContext.mounted) {
+                        Navigator.of(dialogContext).pop(path);
+                      }
+                    } on Object catch (error) {
+                      if (dialogContext.mounted) {
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(_storageDirectoryError(error)),
+                          ),
+                        );
+                      }
+                    }
+                  },
+            child: const Text('选择文件夹'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const Key('recording-directory-save'),
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (selected == null || !mounted) return;
+    try {
+      final String saved = selected == _recordingDirectory
+          ? selected
+          : await widget.onRecordingDirectoryChanged!(selected);
+      if (!mounted) return;
+      setState(() => _recordingDirectory = saved);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(saved.isEmpty ? '已恢复应用内部存储' : '新录像将保存到所选路径')),
+      );
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_storageDirectoryError(error))));
+      }
+    }
+  }
+
+  String _storageDirectoryError(Object error) {
+    if (error is PlatformException && error.message?.isNotEmpty == true) {
+      return error.message!;
+    }
+    return error.toString().replaceFirst('Bad state: ', '');
   }
 }
 
@@ -1023,9 +1133,7 @@ class _CameraWorkModeDropdown extends StatelessWidget {
                 const SizedBox(height: 5),
                 Text(
                   preference.description,
-                  key: Key(
-                    '${mode.storageValue}-camera-work-mode-description',
-                  ),
+                  key: Key('${mode.storageValue}-camera-work-mode-description'),
                   style: TextStyle(
                     color: colors.onSurfaceVariant,
                     fontSize: 13,
@@ -1635,38 +1743,36 @@ class _MaxVolumeSettings extends StatelessWidget {
 
 extension _RecordingsSettingsView on _RecordingsScreenState {
   /// 打开「录像清理」二级页；空间不足横幅的「去设置」也走同一条路径。
-  Future<void> _openCleanupSettingsPage() =>
-      Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => _CleanupSettingsScreen(
-            unbackedRetention: _unbackedRetention,
-            backedRetention: _backedRetention,
-            onUnbackedRetentionChanged: (UnbackedRetentionPolicy value) async {
-              await _setUnbackedRetention(value);
-              return _unbackedRetention == value;
+  Future<void> _openCleanupSettingsPage() => Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(
+      builder: (_) => _CleanupSettingsScreen(
+        unbackedRetention: _unbackedRetention,
+        backedRetention: _backedRetention,
+        onUnbackedRetentionChanged: (UnbackedRetentionPolicy value) async {
+          await _setUnbackedRetention(value);
+          return _unbackedRetention == value;
+        },
+        // 「备份后立即清除」需要二次确认，被拒绝时保留原选择。
+        onBackedRetentionChanged: (BackedRetentionPolicy value) async {
+          await _setBackedRetention(value);
+          return _backedRetention == value;
+        },
+        returnUnbackedRetention: _returnUnbackedRetention,
+        returnBackedRetention: _returnBackedRetention,
+        onReturnUnbackedRetentionChanged:
+            (UnbackedRetentionPolicy value) async {
+              await _setReturnUnbackedRetention(value);
+              return _returnUnbackedRetention == value;
             },
-            // 「备份后立即清除」需要二次确认，被拒绝时保留原选择。
-            onBackedRetentionChanged: (BackedRetentionPolicy value) async {
-              await _setBackedRetention(value);
-              return _backedRetention == value;
-            },
-            returnUnbackedRetention: _returnUnbackedRetention,
-            returnBackedRetention: _returnBackedRetention,
-            onReturnUnbackedRetentionChanged:
-                (UnbackedRetentionPolicy value) async {
-                  await _setReturnUnbackedRetention(value);
-                  return _returnUnbackedRetention == value;
-                },
-            onReturnBackedRetentionChanged:
-                (BackedRetentionPolicy value) async {
-                  await _setReturnBackedRetention(value);
-                  return _returnBackedRetention == value;
-                },
-            storagePressurePolicy: _storagePressurePolicy,
-            onStoragePressurePolicyChanged: _setStoragePressurePolicy,
-          ),
-        ),
-      );
+        onReturnBackedRetentionChanged: (BackedRetentionPolicy value) async {
+          await _setReturnBackedRetention(value);
+          return _returnBackedRetention == value;
+        },
+        storagePressurePolicy: _storagePressurePolicy,
+        onStoragePressurePolicyChanged: _setStoragePressurePolicy,
+      ),
+    ),
+  );
 
   List<Widget> buildRecordingsSettingsChildren(BuildContext context) {
     final CameraCapabilitySettings? cameraCapability = widget.cameraCapability;
@@ -1759,6 +1865,14 @@ extension _RecordingsSettingsView on _RecordingsScreenState {
               galleryAutoBackupSupported: widget.galleryAutoBackupSupported,
               galleryAutoBackup: _galleryAutoBackupEnabled,
               onGalleryAutoBackupChanged: _setGalleryAutoBackupEnabled,
+              recordingDirectorySupported:
+                  widget.capabilities?.supports(
+                    PlatformCapability.customRecordingDirectory,
+                  ) ??
+                  false,
+              recordingDirectory: _recordingDirectory,
+              onChooseRecordingDirectory: widget.onChooseRecordingDirectory,
+              onRecordingDirectoryChanged: widget.onRecordingDirectoryChanged,
             ),
           ),
         ),

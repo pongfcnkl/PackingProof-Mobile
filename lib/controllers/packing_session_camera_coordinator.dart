@@ -146,6 +146,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       _recordingOrientation = settings.recordingOrientation;
       _minimumBarcodeLength = settings.minimumBarcodeLength;
       _historyPageSize = settings.historyPageSize;
+      _recordingDirectory = settings.recordingDirectory;
       _hiddenRemoteRecordingIds = Set<int>.of(
         settings.hiddenRemoteRecordingIds,
       );

@@ -141,8 +141,10 @@ String _noticeVersionLabel(String version, int buildNumber) =>
 @visibleForTesting
 String mobileUpdateNoticeText(MobileAppUpdateNotice notice) {
   if (notice.updateRequired) {
-    final String required =
-        _noticeVersionLabel(notice.minimumVersion, notice.minimumBuildNumber);
+    final String required = _noticeVersionLabel(
+      notice.minimumVersion,
+      notice.minimumBuildNumber,
+    );
     return notice.message.isEmpty
         ? '电脑端要求 $required 或更高\n请更新后再继续使用'
         : '最低 $required\n${notice.message}';
@@ -1199,6 +1201,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       watermarkEnabled: _controller.watermarkEnabled,
       galleryAutoBackupEnabled: _controller.galleryAutoBackupEnabled,
       galleryAutoBackupSupported: _controller.galleryAutoBackupSupported,
+      recordingDirectory: _controller.recordingDirectory,
       preferredVideoCodec: _controller.preferredVideoCodec,
       recordingSpec: _controller.recordingSpec,
       availableRecordingSpecs: _controller.availableRecordingSpecs,
@@ -1213,7 +1216,8 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       returnUnbackedRetention: _controller.returnUnbackedRetention,
       returnBackedRetention: _controller.returnBackedRetention,
       storagePressurePolicy: _controller.storagePressurePolicy,
-      autoOpenCleanup: mode == RecordingsScreenMode.settings && _autoOpenCleanup,
+      autoOpenCleanup:
+          mode == RecordingsScreenMode.settings && _autoOpenCleanup,
       onCleanupOpened: () {
         if (_autoOpenCleanup) setState(() => _autoOpenCleanup = false);
       },
@@ -1228,6 +1232,8 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       onRecordAudioEnabledChanged: _controller.setRecordAudioEnabled,
       onWatermarkEnabledChanged: _controller.setWatermarkEnabled,
       onGalleryAutoBackupChanged: _controller.setGalleryAutoBackupEnabled,
+      onChooseRecordingDirectory: _controller.chooseRecordingDirectory,
+      onRecordingDirectoryChanged: _controller.setRecordingDirectory,
       onPreferredVideoCodecChanged: _controller.setPreferredVideoCodec,
       onRecordingSpecChanged: _controller.setRecordingSpec,
       onRecordingOrientationChanged: _controller.setRecordingOrientation,
@@ -1257,8 +1263,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
               returnPreference: _controller.cameraCapabilityPreferenceFor(
                 RecordingOperationMode.returnGoods,
               ),
-              onPreferenceChanged:
-                  _controller.setCameraCapabilityPreferenceFor,
+              onPreferenceChanged: _controller.setCameraCapabilityPreferenceFor,
               showCard: _controller.showCameraCapabilityCard,
             )
           : null,
@@ -2183,7 +2188,11 @@ class _CameraWatermarkPlacement extends StatelessWidget {
 }
 
 class _ComputerPairingBanner extends StatelessWidget {
-  const _ComputerPairingBanner({super.key, required this.message, this.onCancel});
+  const _ComputerPairingBanner({
+    super.key,
+    required this.message,
+    this.onCancel,
+  });
 
   final String message;
   final VoidCallback? onCancel;
@@ -2615,7 +2624,9 @@ class _ControlPanel extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
                       Text(
-                        view.currentCode.isEmpty ? '录制中，等待面单' : view.currentCode,
+                        view.currentCode.isEmpty
+                            ? '录制中，等待面单'
+                            : view.currentCode,
                         key: const Key('current-shipping-code'),
                         maxLines: 1,
                         textAlign: TextAlign.center,

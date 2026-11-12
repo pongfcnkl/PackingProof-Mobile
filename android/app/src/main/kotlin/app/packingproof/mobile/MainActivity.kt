@@ -17,6 +17,7 @@ class MainActivity : FlutterActivity() {
     private var videoWatermarkPlugin: VideoWatermarkPlugin? = null
     private var orderInfoReceiverPlugin: OrderInfoReceiverPlugin? = null
     private var integrationMediaTrackProbe: IntegrationMediaTrackProbe? = null
+    private var storageDirectoryPlugin: StorageDirectoryPlugin? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,6 +30,10 @@ class MainActivity : FlutterActivity() {
             activity = this,
             messenger = flutterEngine.dartExecutor.binaryMessenger,
             textures = flutterEngine.renderer,
+        )
+        storageDirectoryPlugin = StorageDirectoryPlugin(
+            this,
+            flutterEngine.dartExecutor.binaryMessenger,
         )
         lanBackupPlugin = LanBackupPlugin(this)
         videoExportPlugin = VideoExportPlugin(
@@ -108,6 +113,11 @@ class MainActivity : FlutterActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        if (storageDirectoryPlugin?.onActivityResult(requestCode, resultCode, data) == true) return
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
     override fun onDestroy() {
         continuousCameraPlugin?.dispose()
         continuousCameraPlugin = null
@@ -129,6 +139,8 @@ class MainActivity : FlutterActivity() {
         orderInfoReceiverPlugin = null
         integrationMediaTrackProbe?.dispose()
         integrationMediaTrackProbe = null
+        storageDirectoryPlugin?.dispose()
+        storageDirectoryPlugin = null
         super.onDestroy()
     }
 

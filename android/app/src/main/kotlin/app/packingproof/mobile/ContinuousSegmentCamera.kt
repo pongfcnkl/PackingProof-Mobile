@@ -2626,7 +2626,12 @@ class ContinuousSegmentCamera(
             if (liveWatermarkEnabled) {
                 cameraGlCompositor?.setWatermark(activeWatermarkTrackingNumber)
             }
-            replyError(result, "split_failed", "录像分段保存失败")
+            val detail = error.message?.takeIf { it.isNotBlank() }
+            replyError(
+                result,
+                "split_failed",
+                detail?.let { "录像分段保存失败：$it" } ?: "录像分段保存失败",
+            )
             notifyNativeError("录像分段保存失败", error)
         }
     }

@@ -12,11 +12,14 @@ import 'adapters/unsupported_backup_platform.dart';
 import 'adapters/unsupported_thumbnail_platform.dart';
 import 'adapters/unsupported_order_receiver_platform.dart';
 import 'adapters/unsupported_media_platforms.dart';
+import 'adapters/method_channel_storage_directory_platform.dart';
+import 'adapters/unsupported_storage_directory_platform.dart';
 import 'contracts/backup_platform.dart';
 import 'contracts/camera_platform.dart';
 import 'contracts/thumbnail_platform.dart';
 import 'contracts/order_receiver_platform.dart';
 import 'contracts/media_platform.dart';
+import 'contracts/storage_directory_platform.dart';
 import 'platform_capabilities.dart';
 
 /// 应用启动时创建一次的平台实现容器。
@@ -32,6 +35,7 @@ class AppContainer {
     required this.mediaProcessing,
     required this.systemMediaPresenter,
     required this.alertAudioSession,
+    this.storageDirectory = const UnsupportedStorageDirectoryPlatform(),
   });
 
   factory AppContainer.forCurrentPlatform() =>
@@ -67,6 +71,7 @@ class AppContainer {
               PlatformCapability.systemVideoPlayer,
               PlatformCapability.alertAudioSession,
               PlatformCapability.alertVolumeBoost,
+              PlatformCapability.customRecordingDirectory,
             })
           : platform == _AppPlatform.ios
           ? const PlatformCapabilities(<PlatformCapability>{
@@ -102,6 +107,9 @@ class AppContainer {
       alertAudioSession: isMobile
           ? PigeonAlertAudioSessionPlatform()
           : const UnsupportedAlertAudioSessionPlatform(),
+      storageDirectory: isAndroid
+          ? const MethodChannelStorageDirectoryPlatform()
+          : const UnsupportedStorageDirectoryPlatform(),
     );
   }
 
@@ -113,6 +121,7 @@ class AppContainer {
   final MediaProcessingPlatform mediaProcessing;
   final SystemMediaPresenter systemMediaPresenter;
   final AlertAudioSessionPlatform alertAudioSession;
+  final StorageDirectoryPlatform storageDirectory;
 }
 
 enum _AppPlatform { android, ios, unsupported }

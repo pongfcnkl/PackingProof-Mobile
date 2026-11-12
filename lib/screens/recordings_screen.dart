@@ -52,8 +52,9 @@ part 'recordings_history_widgets.dart';
 
 enum RecordingsScreenMode { history, settings }
 
-typedef LocalRecordingFileProbe =
-    Future<({bool exists, int bytes})> Function(String path);
+typedef LocalRecordingFileProbe = Future<({bool exists, int bytes})> Function(
+  String path,
+);
 
 @visibleForTesting
 String recordingsHistoryTitle(String deviceName, String ipAddress) {
@@ -150,6 +151,7 @@ class RecordingsScreen extends StatefulWidget {
     this.watermarkEnabled = true,
     this.galleryAutoBackupEnabled = false,
     this.galleryAutoBackupSupported = false,
+    this.recordingDirectory = '',
     this.preferredVideoCodec = RecordingVideoCodec.h264,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
     this.availableRecordingSpecs = const <RecordingSpecPreset>[
@@ -168,6 +170,8 @@ class RecordingsScreen extends StatefulWidget {
     this.onRecordAudioEnabledChanged,
     this.onWatermarkEnabledChanged,
     this.onGalleryAutoBackupChanged,
+    this.onChooseRecordingDirectory,
+    this.onRecordingDirectoryChanged,
     this.onPreferredVideoCodecChanged,
     this.onRecordingSpecChanged,
     this.onRecordingOrientationChanged,
@@ -239,6 +243,7 @@ class RecordingsScreen extends StatefulWidget {
   final bool watermarkEnabled;
   final bool galleryAutoBackupEnabled;
   final bool galleryAutoBackupSupported;
+  final String recordingDirectory;
   final RecordingVideoCodec preferredVideoCodec;
   final RecordingSpecPreset recordingSpec;
   final List<RecordingSpecPreset> availableRecordingSpecs;
@@ -255,6 +260,8 @@ class RecordingsScreen extends StatefulWidget {
   final Future<void> Function(bool enabled)? onRecordAudioEnabledChanged;
   final Future<void> Function(bool enabled)? onWatermarkEnabledChanged;
   final Future<bool> Function(bool enabled)? onGalleryAutoBackupChanged;
+  final Future<String?> Function()? onChooseRecordingDirectory;
+  final Future<String> Function(String path)? onRecordingDirectoryChanged;
   final Future<void> Function(RecordingVideoCodec codec)?
   onPreferredVideoCodecChanged;
   final Future<void> Function(RecordingSpecPreset spec)? onRecordingSpecChanged;
@@ -390,6 +397,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
   late RecordingSpecPreset _recordingSpec;
   late RecordingOrientation _recordingOrientation;
   late int _minimumBarcodeLength;
+  late String _recordingDirectory;
   VideoDecodeSupport? _deviceDecodeSupport;
   @override
   late List<RecordingSession> _sessions;
@@ -458,6 +466,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     _recordAudioEnabled = widget.recordAudioEnabled;
     _watermarkEnabled = widget.watermarkEnabled;
     _galleryAutoBackupEnabled = widget.galleryAutoBackupEnabled;
+    _recordingDirectory = widget.recordingDirectory;
     _preferredVideoCodec = widget.preferredVideoCodec;
     _recordingSpec = widget.recordingSpec;
     _recordingOrientation = widget.recordingOrientation;
@@ -534,6 +543,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     _recordAudioEnabled = widget.recordAudioEnabled;
     _watermarkEnabled = widget.watermarkEnabled;
     _galleryAutoBackupEnabled = widget.galleryAutoBackupEnabled;
+    _recordingDirectory = widget.recordingDirectory;
     _preferredVideoCodec = widget.preferredVideoCodec;
     _recordingSpec = widget.recordingSpec;
     _recordingOrientation = widget.recordingOrientation;
@@ -736,9 +746,8 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     setState(() => _preferredVideoCodec = codec);
     await widget.onPreferredVideoCodecChanged?.call(codec);
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('录像编码已切换，新录像将使用所选编码')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('录像编码已切换，新录像将使用所选编码')));
     }
   }
 
@@ -747,17 +756,15 @@ class _RecordingsScreenState extends State<RecordingsScreen>
       return;
     }
     if (!widget.availableRecordingSpecs.contains(spec)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('当前摄像头不支持录制 4K')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('当前摄像头不支持录制 4K')));
       return;
     }
     setState(() => _recordingSpec = spec);
     await widget.onRecordingSpecChanged?.call(spec);
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('录像规格已切换，新录像将使用所选规格')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('录像规格已切换，新录像将使用所选规格')));
     }
   }
 
@@ -854,9 +861,8 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     final String value = data?.text?.trim() ?? '';
     if (!mounted || value.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('剪贴板里没有可用文本')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('剪贴板里没有可用文本')));
       }
       return;
     }

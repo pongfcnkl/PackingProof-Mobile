@@ -29,6 +29,7 @@ import '../models/work_mode.dart';
 import '../platform/contracts/media_platform.dart';
 import '../platform/platform_capabilities.dart';
 import '../platform/platform_container.dart';
+import '../platform/contracts/storage_directory_platform.dart';
 import '../services/barcode_candidate_policy.dart';
 import '../services/barcode_recognized_beep_policy.dart';
 import '../services/barcode_stability_tracker.dart';
@@ -96,6 +97,7 @@ class PackingSessionController extends ChangeNotifier
     DiagnosticsLogService? runtimeLog,
     CameraDiagnosticsService? cameraDiagnostics,
     PlatformCapabilities? capabilities,
+    StorageDirectoryPlatform? storageDirectoryPlatform,
     ContinuousCameraService? cameraService,
     ContinuousCameraService Function()? cameraServiceFactory,
     Future<PackageInfo> Function()? packageInfoLoader,
@@ -119,6 +121,9 @@ class PackingSessionController extends ChangeNotifier
            AppContainer.forCurrentPlatform().systemMediaPresenter,
        _capabilities =
            capabilities ?? AppContainer.forCurrentPlatform().capabilities,
+       _storageDirectoryPlatform =
+           storageDirectoryPlatform ??
+           AppContainer.forCurrentPlatform().storageDirectory,
        _nativeCamera = cameraService,
        _cameraServiceFactory =
            cameraServiceFactory ?? ContinuousCameraService.new,
@@ -165,6 +170,7 @@ class PackingSessionController extends ChangeNotifier
   @override
   final VideoWatermarkSink _videoWatermarkService;
   final PlatformCapabilities _capabilities;
+  final StorageDirectoryPlatform _storageDirectoryPlatform;
   @override
   final OrderInfoReceiverSink _orderInfoReceiver;
   @override

@@ -3,6 +3,7 @@ part of 'packing_session_controller.dart';
 /// 协调运行设置变更、服务同步、持久化与必要的相机重建。
 mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
   PackingSessionPhase get _phase;
+  StorageDirectoryPlatform get _storageDirectoryPlatform;
 
   Future<void> retryInitialize();
   Future<void> _beginMaxVolumeIfNeeded();
@@ -38,11 +39,42 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
   bool _scanBeepEnabled = false;
   @override
   bool _scanQrCodes = false;
+  String _recordingDirectory = '';
 
   bool get orderSpeechEnabled => _orderSpeechEnabled;
   bool get scanBeepEnabled => _scanBeepEnabled;
   bool get scanQrCodes => _scanQrCodes;
   bool get manualTrackingValidationEnabled => _manualTrackingValidationEnabled;
+  String get recordingDirectory => _recordingDirectory;
+
+  Future<String?> chooseRecordingDirectory() async {
+    if (isWorking || isBusy) return null;
+    if (!await _storageDirectoryPlatform.requestAccess()) {
+      throw StateError('需要存储权限才能使用自定义保存路径');
+    }
+    final String? selected = await _storageDirectoryPlatform.pickDirectory();
+    if (selected == null) return null;
+    return setRecordingDirectory(selected);
+  }
+
+  Future<String> setRecordingDirectory(String path) async {
+    if (isWorking || isBusy) {
+      throw StateError('请先结束当前工作再修改保存路径');
+    }
+    final String value;
+    if (path.trim().isEmpty) {
+      value = '';
+    } else {
+      if (!await _storageDirectoryPlatform.requestAccess()) {
+        throw StateError('需要存储权限才能使用自定义保存路径');
+      }
+      value = await _storageDirectoryPlatform.validateDirectory(path.trim());
+    }
+    await _repository.saveRecordingDirectory(value);
+    _recordingDirectory = value;
+    notifyListeners();
+    return value;
+  }
 
   Future<void> setManualTrackingValidationEnabled(bool enabled) async {
     if (_manualTrackingValidationEnabled == enabled) return;

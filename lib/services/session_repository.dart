@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -134,8 +135,13 @@ class SessionRepository {
 
   Future<void> _initializeImpl() async {
     _rootDirectory ??= await getApplicationDocumentsDirectory();
+    _settingsFile = File(p.join(_rootDirectory!.path, 'settings.json'));
+    final String configuredDirectory =
+        await _readConfiguredRecordingDirectory();
     _recordingsDirectory = Directory(
-      p.join(_rootDirectory!.path, 'recordings'),
+      configuredDirectory.isEmpty
+          ? p.join(_rootDirectory!.path, 'recordings')
+          : configuredDirectory,
     );
     await _recordingsDirectory.create(recursive: true);
     _pendingRecordingsDirectory = Directory(
@@ -143,7 +149,6 @@ class SessionRepository {
     );
     await _pendingRecordingsDirectory.create(recursive: true);
     _indexFile = File(p.join(_rootDirectory!.path, 'sessions.json'));
-    _settingsFile = File(p.join(_rootDirectory!.path, 'settings.json'));
     _recordingDatabase = RecordingDatabase(
       path: p.join(_rootDirectory!.path, 'recordings.db'),
       availableStorageBytesForMigration: _availableRecordingStorageBytes == null
@@ -161,6 +166,19 @@ class SessionRepository {
     await _recordingDatabase.migrateLegacyIndex(_indexFile);
     _initialized = true;
     await _recoverPendingRecordings();
+  }
+
+  Future<String> _readConfiguredRecordingDirectory() async {
+    if (!await _settingsFile.exists()) return '';
+    try {
+      final Object? decoded = jsonDecode(await _settingsFile.readAsString());
+      if (decoded is! Map) return '';
+      final Object? value = decoded['recordingDirectory'];
+      return value is String ? value.trim() : '';
+    } on Object {
+      // loadSettings 负责损坏设置的恢复；初始化录像目录时安全回退到私有目录。
+      return '';
+    }
   }
 
   Future<void> _recoverPendingRecordings() async {
@@ -1006,6 +1024,27 @@ class SessionRepository {
   Future<void> saveWatermarkEnabled(bool enabled) => _updateSettings(
     (AppSettings value) => value.copyWith(watermarkEnabled: enabled),
   );
+
+  Future<void> saveRecordingDirectory(String path) async {
+    await initialize();
+    final String normalized = path.trim().isEmpty
+        ? ''
+        : p.normalize(path.trim());
+    final Directory next = Directory(
+      normalized.isEmpty
+          ? p.join(_rootDirectory!.path, 'recordings')
+          : normalized,
+    );
+    await next.create(recursive: true);
+    final Directory pending = Directory(p.join(next.path, '.pending'));
+    await pending.create(recursive: true);
+    await _updateSettings(
+      (AppSettings value) => value.copyWith(recordingDirectory: normalized),
+    );
+    _recordingsDirectory = next;
+    _pendingRecordingsDirectory = pending;
+    _pathResolver = RecordingPathResolver(next.path);
+  }
 
   Future<void> saveManualTrackingValidationEnabled(bool enabled) =>
       _updateSettings(

@@ -16,6 +16,7 @@ enum PlatformCapability {
   systemVideoPlayer,
   alertAudioSession,
   alertVolumeBoost,
+  customRecordingDirectory,
 }
 
 /// 当前运行平台的能力描述。

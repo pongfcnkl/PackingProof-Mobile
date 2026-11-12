@@ -55,9 +55,9 @@ class RecordingMuxPipelineTest {
                 "open:first.mp4",
                 "video:first.mp4:0:${MediaCodec.BUFFER_FLAG_KEY_FRAME}",
                 "audio:first.mp4:0",
+                "open:second.mp4",
                 "audio:first.mp4:499999",
                 "close:first.mp4:false",
-                "open:second.mp4",
                 "audio:second.mp4:0",
                 "video:second.mp4:0:${MediaCodec.BUFFER_FLAG_KEY_FRAME}",
             ),
@@ -89,9 +89,9 @@ class RecordingMuxPipelineTest {
             listOf(
                 "open:first.mp4",
                 "audio:first.mp4:0",
+                "open:second.mp4",
                 "audio:first.mp4:999999",
                 "close:first.mp4:false",
-                "open:second.mp4",
                 "audio:second.mp4:0",
                 "video:second.mp4:0:${MediaCodec.BUFFER_FLAG_KEY_FRAME}",
             ),
@@ -202,8 +202,8 @@ class RecordingMuxPipelineTest {
         assertEquals(
             listOf(
                 "open:first.mp4",
-                "close:first.mp4:false",
                 "open:second.mp4",
+                "close:first.mp4:false",
                 "video:second.mp4:0:${MediaCodec.BUFFER_FLAG_KEY_FRAME}",
             ),
             events,
@@ -215,6 +215,51 @@ class RecordingMuxPipelineTest {
         val pipeline = pipeline(mutableListOf())
 
         assertFalse(pipeline.writeVideo(ByteBuffer.wrap(byteArrayOf(1)), 1_000L, 0))
+    }
+
+    @Test
+    fun `下一段文件无法打开时保留当前 muxer 继续录像`() {
+        val events = mutableListOf<String>()
+        val pipeline = RecordingMuxPipeline(
+            muxerFactory = SegmentMuxerFactory { path, _, _ ->
+                events += "open:$path"
+                if (path == "second.mp4") error("external storage unavailable")
+                object : SegmentMuxer {
+                    override fun writeVideo(
+                        buffer: ByteBuffer,
+                        presentationTimeUs: Long,
+                        flags: Int,
+                    ) = Unit
+
+                    override fun writeAudio(
+                        sample: EncodedMuxSample,
+                        presentationTimeUs: Long,
+                    ) = Unit
+
+                    override fun close(deleteOutput: Boolean) {
+                        events += "close:$path:$deleteOutput"
+                    }
+                }
+            },
+        )
+        pipeline.beginRecording()
+        pipeline.openSegment("first.mp4", 1_000L, 10_000L, 0, false)
+
+        val failed = runCatching {
+            pipeline.rotateAtKeyFrame(
+                "second.mp4",
+                ByteBuffer.wrap(byteArrayOf(1)),
+                2_000L,
+                MediaCodec.BUFFER_FLAG_KEY_FRAME,
+                0,
+                false,
+            )
+        }.isFailure
+
+        assertTrue(failed)
+        assertTrue(pipeline.hasActiveMuxer)
+        assertEquals("first.mp4", pipeline.currentPath)
+        assertEquals(listOf("open:first.mp4", "open:second.mp4"), events)
     }
 
     private fun pipeline(events: MutableList<String>): RecordingMuxPipeline =

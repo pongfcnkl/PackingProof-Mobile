@@ -51,6 +51,7 @@ class AppSettings {
     this.historyPageSize = defaultHistoryPageSize,
     this.scanBeepEnabled = false,
     this.scanQrCodes = false,
+    this.recordingDirectory = '',
     this.extraValues = const <String, Object?>{},
   });
 
@@ -91,6 +92,7 @@ class AppSettings {
     extraValues.remove('historyPageSize');
     extraValues.remove('scanBeepEnabled');
     extraValues.remove('scanQrCodes');
+    extraValues.remove('recordingDirectory');
     final Set<int> hiddenRemoteRecordingIds =
         ((json['hiddenRemoteRecordingIds'] as List<Object?>?) ?? const [])
             .whereType<num>()
@@ -199,6 +201,9 @@ class AppSettings {
       scanQrCodes: json['scanQrCodes'] is bool
           ? json['scanQrCodes']! as bool
           : false,
+      recordingDirectory: json['recordingDirectory'] is String
+          ? (json['recordingDirectory']! as String).trim()
+          : '',
       extraValues: extraValues,
     );
   }
@@ -261,6 +266,7 @@ class AppSettings {
 
   /// 是否把二维码也当作面单号识别，默认关闭（只认一维条码）。
   final bool scanQrCodes;
+  final String recordingDirectory;
   final Map<String, Object?> extraValues;
 
   CameraCapabilityPreference cameraCapabilityPreferenceFor(
@@ -307,6 +313,7 @@ class AppSettings {
     int? historyPageSize,
     bool? scanBeepEnabled,
     bool? scanQrCodes,
+    String? recordingDirectory,
   }) {
     return AppSettings(
       workMode: workMode ?? this.workMode,
@@ -358,6 +365,7 @@ class AppSettings {
       historyPageSize: historyPageSize ?? this.historyPageSize,
       scanBeepEnabled: scanBeepEnabled ?? this.scanBeepEnabled,
       scanQrCodes: scanQrCodes ?? this.scanQrCodes,
+      recordingDirectory: recordingDirectory ?? this.recordingDirectory,
       extraValues: extraValues,
     );
   }
@@ -421,5 +429,6 @@ class AppSettings {
     'historyPageSize': historyPageSize,
     'scanBeepEnabled': scanBeepEnabled,
     'scanQrCodes': scanQrCodes,
+    'recordingDirectory': recordingDirectory,
   };
 }
