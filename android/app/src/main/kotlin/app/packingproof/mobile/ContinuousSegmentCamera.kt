@@ -49,6 +49,21 @@ internal val CONTINUOUS_CAMERA_PROBE_TRIGGER_STAGES = setOf(
     "session_config", "session_create", "capture_request",
 )
 
+internal object SplitSyncFrameRequestPolicy {
+    private const val RETRY_INTERVAL_MS = 400L
+
+    fun retryDelays(
+        hasWatermarkTransition: Boolean,
+        timeoutMs: Long,
+    ): List<Long> = if (hasWatermarkTransition) {
+        emptyList()
+    } else {
+        generateSequence(0L) { it + RETRY_INTERVAL_MS }
+            .takeWhile { it < timeoutMs }
+            .toList()
+    }
+}
+
 /** 进程内共享的初始化组合探针结果，避免重试时重复探测。 */
 internal object ContinuousCameraInitProbeCache {
     @Volatile var results: List<Map<String, Any?>>? = null
@@ -509,11 +524,11 @@ class ContinuousSegmentCamera(
             splitResult = result
             recordingMuxPipeline.beginSplit()
             val compositor = cameraGlCompositor
-            // 关闭「添加水印」时既不准备下一段水印，也不等关键帧。
-            if (liveWatermarkEnabled &&
+            // 水印路径等新水印首帧提交后再请求关键帧；无水印路径直接请求并重试。
+            val hasWatermarkTransition = liveWatermarkEnabled &&
                 cameraSurfacePipeline == CameraSurfacePipeline.GL_COMPOSITOR &&
                 compositor != null
-            ) {
+            if (hasWatermarkTransition) {
                 compositor.prepareWatermarkTransition(
                     trackingNumber,
                     onActivated = {
@@ -530,7 +545,16 @@ class ContinuousSegmentCamera(
                     },
                 )
             } else {
-                recordingVideoEncoder.requestSyncFrame()
+                SplitSyncFrameRequestPolicy.retryDelays(
+                    hasWatermarkTransition = false,
+                    timeoutMs = SPLIT_TIMEOUT_MS,
+                ).forEach { delayMs ->
+                    handler.postDelayed({
+                        if (splitResult === result) {
+                            recordingVideoEncoder.requestSyncFrame()
+                        }
+                    }, delayMs)
+                }
             }
             handler.postDelayed({
                 if (splitResult === result) {
