@@ -11,6 +11,7 @@ import 'package:packing_proof_mobile/models/recording_spec.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/models/work_mode.dart';
 import 'package:packing_proof_mobile/services/session_repository.dart';
+import 'package:path/path.dart' as p;
 
 import 'test_repository.dart';
 
@@ -129,30 +130,31 @@ void main() {
 
   test('自定义录像目录可持久化且新录像路径切换到该目录', () async {
     final SessionRepository repository = testRepository(root);
-    final Directory custom = Directory('${root.path}/external-recordings');
+    final Directory custom = Directory(
+      p.join(root.path, 'external-recordings'),
+    );
 
     await repository.saveRecordingDirectory(custom.path);
 
     final AppSettings settings = await repository.loadSettings();
     expect(settings.recordingDirectory, custom.path);
     final String pending = await repository.recordingPath('segment-1');
-    expect(pending, '${custom.path}/.pending/segment-1.mp4');
-    expect(
-      await Directory('${custom.path}/.pending').exists(),
-      isTrue,
-    );
+    expect(pending, p.join(custom.path, '.pending', 'segment-1.mp4'));
+    expect(await Directory(p.join(custom.path, '.pending')).exists(), isTrue);
   });
 
   test('清空自定义录像目录后恢复应用内部目录', () async {
     final SessionRepository repository = testRepository(root);
-    await repository.saveRecordingDirectory('${root.path}/external-recordings');
+    await repository.saveRecordingDirectory(
+      p.join(root.path, 'external-recordings'),
+    );
 
     await repository.saveRecordingDirectory('');
 
     expect((await repository.loadSettings()).recordingDirectory, isEmpty);
     expect(
       await repository.recordingPath('segment-2'),
-      '${root.path}/recordings/.pending/segment-2.mp4',
+      p.join(root.path, 'recordings', '.pending', 'segment-2.mp4'),
     );
   });
 
