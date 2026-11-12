@@ -9,6 +9,18 @@ import org.junit.Test
 
 class RecordingMuxPipelineTest {
     @Test
+    fun `无水印分段遇到关键帧立即切换`() {
+        assertEquals(
+            SplitVideoSampleAction.WRITE_CURRENT,
+            SplitVideoSamplePolicy.decide(1_500_000L, false, null),
+        )
+        assertEquals(
+            SplitVideoSampleAction.ROTATE,
+            SplitVideoSamplePolicy.decide(1_600_000L, true, null),
+        )
+    }
+
+    @Test
     fun `厂商延迟关键帧时丢弃水印切换后的过渡帧并裁剪中间音频`() {
         val events = mutableListOf<String>()
         val pipeline = pipeline(events)
