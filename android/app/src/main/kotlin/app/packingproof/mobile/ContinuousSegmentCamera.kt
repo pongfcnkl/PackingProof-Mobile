@@ -2502,7 +2502,18 @@ class ContinuousSegmentCamera(
         val watermarkRendered = encodedWatermarkFrameTracker.takeForEncodedSample(
             info.presentationTimeUs,
         )
-        val isKeyFrame = info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
+        val isKeyFrame = EncodedVideoKeyFrameDetector.isKeyFrame(
+            buffer,
+            info.offset,
+            info.size,
+            recordingVideoEncoder.selectedMime,
+            info.flags,
+        )
+        val sampleFlags = if (isKeyFrame) {
+            info.flags or MediaCodec.BUFFER_FLAG_KEY_FRAME
+        } else {
+            info.flags
+        }
         if (startResult != null && recordingRequested && isKeyFrame && formatsReady()) {
             val path = pendingStartPath ?: return
             try {
@@ -2540,6 +2551,7 @@ class ContinuousSegmentCamera(
                 transitionPtsUs = pendingWatermarkTransitionPtsUs,
             )) {
                 SplitVideoSampleAction.ROTATE -> {
+                    info.flags = sampleFlags
                     rotateMuxerAtKeyFrame(buffer, info, watermarkRendered)
                     return
                 }
@@ -2550,7 +2562,7 @@ class ContinuousSegmentCamera(
         if (recordingMuxPipeline.writeVideo(
                 buffer,
                 info.presentationTimeUs,
-                info.flags,
+                sampleFlags,
             )
         ) {
             liveWatermarkSegmentState.markMuxedWatermarkSample(watermarkRendered)

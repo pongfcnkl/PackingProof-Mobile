@@ -2,6 +2,7 @@ package app.packingproof.mobile
 
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
+import java.nio.ByteBuffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -9,6 +10,34 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RecordingVideoEncoderTest {
+    @Test
+    fun `厂商遗漏 flag 时从 AVC Annex B IDR 识别关键帧`() {
+        val sample = ByteBuffer.wrap(byteArrayOf(9, 0, 0, 0, 1, 0x65, 1, 2))
+
+        assertTrue(
+            EncodedVideoKeyFrameDetector.isKeyFrame(
+                sample, 1, 7, MediaFormat.MIMETYPE_VIDEO_AVC, 0,
+            ),
+        )
+    }
+
+    @Test
+    fun `厂商遗漏 flag 时从 length prefixed HEVC IRAP 识别关键帧`() {
+        val sample = ByteBuffer.wrap(byteArrayOf(0, 0, 0, 3, 0x26, 1, 2))
+
+        assertTrue(
+            EncodedVideoKeyFrameDetector.isKeyFrame(
+                sample, 0, sample.limit(), MediaFormat.MIMETYPE_VIDEO_HEVC, 0,
+            ),
+        )
+        assertFalse(
+            EncodedVideoKeyFrameDetector.isKeyFrame(
+                ByteBuffer.wrap(byteArrayOf(0, 0, 0, 2, 0x02, 1)),
+                0, 6, MediaFormat.MIMETYPE_VIDEO_HEVC, 0,
+            ),
+        )
+    }
+
     @Test
     fun `HEVC 可解码时按首选编码再回退 AVC 两种 profile`() {
         val plan = VideoEncoderPlanPolicy.create(

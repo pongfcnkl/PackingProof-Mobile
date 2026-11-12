@@ -42,6 +42,57 @@ internal object VideoEncoderFormatPolicy {
         )
 }
 
+internal object EncodedVideoKeyFrameDetector {
+    fun isKeyFrame(
+        buffer: ByteBuffer,
+        offset: Int,
+        size: Int,
+        mime: String?,
+        flags: Int,
+    ): Boolean {
+        if (flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0) return true
+        if (size <= 0 || offset < 0 || offset + size > buffer.limit()) return false
+        val end = offset + size
+        var index = offset
+        while (index + 3 < end) {
+            val startCodeSize = when {
+                buffer.get(index).toInt() == 0 &&
+                    buffer.get(index + 1).toInt() == 0 &&
+                    buffer.get(index + 2).toInt() == 1 -> 3
+                index + 4 < end &&
+                    buffer.get(index).toInt() == 0 &&
+                    buffer.get(index + 1).toInt() == 0 &&
+                    buffer.get(index + 2).toInt() == 0 &&
+                    buffer.get(index + 3).toInt() == 1 -> 4
+                else -> 0
+            }
+            if (startCodeSize > 0 && isRandomAccessNal(buffer.get(index + startCodeSize), mime)) {
+                return true
+            }
+            index++
+        }
+
+        index = offset
+        while (index + 4 < end) {
+            val length = ((buffer.get(index).toInt() and 0xff) shl 24) or
+                ((buffer.get(index + 1).toInt() and 0xff) shl 16) or
+                ((buffer.get(index + 2).toInt() and 0xff) shl 8) or
+                (buffer.get(index + 3).toInt() and 0xff)
+            if (length <= 0 || index + 4 + length > end) return false
+            if (isRandomAccessNal(buffer.get(index + 4), mime)) return true
+            index += 4 + length
+        }
+        return false
+    }
+
+    private fun isRandomAccessNal(header: Byte, mime: String?): Boolean =
+        if (mime == MediaFormat.MIMETYPE_VIDEO_HEVC) {
+            ((header.toInt() and 0xff) shr 1) and 0x3f in 16..21
+        } else {
+            (header.toInt() and 0x1f) == 5
+        }
+}
+
 internal object VideoEncoderPlanPolicy {
     fun create(
         preferredMime: String,
