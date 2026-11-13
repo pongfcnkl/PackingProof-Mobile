@@ -1,13 +1,16 @@
 name: Release Android
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
   release:
     runs-on: windows-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,13 +46,39 @@ jobs:
             $credentials,
             [Text.UTF8Encoding]::new($false))
           "SIGNING_DIR=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append
-      - name: 正式签名发布构建
+      - name: 正式签名提交构建
         if: env.SIGNING_DIR != ''
         shell: pwsh
-        run: pwsh -NoProfile -File Tools\Publish-Android.ps1 -SigningDirectory "$env:SIGNING_DIR"
-      - uses: actions/upload-artifact@v4
+        run: |
+          $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:\s*([^+\s]+)\+([1-9]\d*)\s*$' | Select-Object -First 1
+          if (-not $versionLine) { throw 'pubspec.yaml 缺少有效版本号' }
+          $versionName = $versionLine.Matches[0].Groups[1].Value
+          $versionCode = [int]$versionLine.Matches[0].Groups[2].Value
+          pwsh -NoProfile -File Tools\Build-Android.ps1 `
+            -VersionName $versionName `
+            -VersionCode $versionCode `
+            -SigningDirectory "$env:SIGNING_DIR"
+      - name: 上传到每次提交对应的 Release
         if: env.SIGNING_DIR != ''
-        with:
-          name: packingproof-android-release
-          path: dist/android/*
-          if-no-files-found: error
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss')
+          $shortSha = '${{ github.sha }}'.Substring(0, 8)
+          $tag = "build-$timestamp-$shortSha"
+          $apk = Get-ChildItem dist/android/PackingProof-Mobile-*.apk -File | Select-Object -Single
+          $manifest = Get-Item dist/android/build-manifest.json
+          $notes = @"
+          自动构建提交：${{ github.sha }}
+
+          编译时间（UTC）：$timestamp
+
+          APK 内含 Git revision 与编译时间元数据，可直接覆盖安装
+          "@
+          gh release create $tag `
+            $apk.FullName `
+            $manifest.FullName `
+            --target '${{ github.sha }}' `
+            --title "$tag 自动提交构建" `
+            --notes $notes
