@@ -11,6 +11,27 @@ import org.junit.Test
 
 class RecordingVideoEncoderTest {
     @Test
+    fun `无水印分段在超时前持续请求同步帧`() {
+        assertEquals(
+            listOf(0L, 400L, 800L, 1_200L, 1_600L, 2_000L, 2_400L, 2_800L),
+            SplitSyncFrameRequestPolicy.retryDelays(
+                hasWatermarkTransition = false,
+                timeoutMs = 3_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun `水印切换仍只在水印激活后请求同步帧`() {
+        assertTrue(
+            SplitSyncFrameRequestPolicy.retryDelays(
+                hasWatermarkTransition = true,
+                timeoutMs = 3_000L,
+            ).isEmpty(),
+        )
+    }
+
+    @Test
     fun `厂商遗漏 flag 时从 AVC Annex B IDR 识别关键帧`() {
         val sample = ByteBuffer.wrap(byteArrayOf(9, 0, 0, 0, 1, 0x65, 1, 2))
 

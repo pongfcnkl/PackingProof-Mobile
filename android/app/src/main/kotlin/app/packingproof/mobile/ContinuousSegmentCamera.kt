@@ -36,6 +36,7 @@ import com.google.mlkit.vision.common.InputImage
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
 import java.io.File
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -48,6 +49,32 @@ internal val CONTINUOUS_CAMERA_PROBE_TRIGGER_STAGES = setOf(
     "camera_open", "camera_error", "camera_disconnected", "camera_disabled",
     "session_config", "session_create", "capture_request",
 )
+
+internal object SplitSyncFrameRequestPolicy {
+    private const val RETRY_INTERVAL_MS = 400L
+
+    fun retryDelays(
+        hasWatermarkTransition: Boolean,
+        timeoutMs: Long,
+    ): List<Long> = if (hasWatermarkTransition) {
+        emptyList()
+    } else {
+        generateSequence(0L) { it + RETRY_INTERVAL_MS }
+            .takeWhile { it < timeoutMs }
+            .toList()
+    }
+}
+
+internal object RecordingPathPreparation {
+    fun ensureParent(path: String): File {
+        val parent = File(path).parentFile
+            ?: throw IOException("录像文件路径缺少父目录")
+        if (!parent.isDirectory && !parent.mkdirs() && !parent.isDirectory) {
+            throw IOException("无法创建录像目录 ${parent.path}")
+        }
+        return parent
+    }
+}
 
 /** 进程内共享的初始化组合探针结果，避免重试时重复探测。 */
 internal object ContinuousCameraInitProbeCache {
@@ -385,7 +412,13 @@ class ContinuousSegmentCamera(
                 replyError(result, "already_recording", "录像已经开始")
                 return@post
             }
-            if (!hasRecordingReserve(path)) {
+            val parent = try {
+                RecordingPathPreparation.ensureParent(path)
+            } catch (error: IOException) {
+                replyError(result, "recording_directory_unavailable", error.message ?: "无法创建录像目录")
+                return@post
+            }
+            if (!hasRecordingReserve(parent)) {
                 replyError(
                     result,
                     "storage_low",
@@ -394,7 +427,6 @@ class ContinuousSegmentCamera(
                 return@post
             }
             this@ContinuousSegmentCamera.recordAudio = recordAudio
-            ensureParent(path)
             storageFailureReported = false
             recordingRequested = true
             resetStallRecovery()
@@ -493,7 +525,13 @@ class ContinuousSegmentCamera(
                 replyError(result, "split_pending", "上一段录像正在保存")
                 return@post
             }
-            if (!hasRecordingReserve(path)) {
+            val parent = try {
+                RecordingPathPreparation.ensureParent(path)
+            } catch (error: IOException) {
+                replyError(result, "recording_directory_unavailable", error.message ?: "无法创建录像目录")
+                return@post
+            }
+            if (!hasRecordingReserve(parent)) {
                 // 只是这一段的启动被空间拦住，录制本身还在继续：不上报 storageCritical，
                 // 由 Dart 侧先回收空间再重试；清理不出空间时监控会按策略停止录制。
                 replyError(
@@ -503,17 +541,16 @@ class ContinuousSegmentCamera(
                 )
                 return@post
             }
-            ensureParent(path)
             pendingSplitPath = path
             pendingNextTrackingNumber = trackingNumber
             splitResult = result
             recordingMuxPipeline.beginSplit()
             val compositor = cameraGlCompositor
-            // 关闭「添加水印」时既不准备下一段水印，也不等关键帧。
-            if (liveWatermarkEnabled &&
+            // 水印路径等新水印首帧提交后再请求关键帧；无水印路径直接请求并重试。
+            val hasWatermarkTransition = liveWatermarkEnabled &&
                 cameraSurfacePipeline == CameraSurfacePipeline.GL_COMPOSITOR &&
                 compositor != null
-            ) {
+            if (hasWatermarkTransition) {
                 compositor.prepareWatermarkTransition(
                     trackingNumber,
                     onActivated = {
@@ -530,7 +567,16 @@ class ContinuousSegmentCamera(
                     },
                 )
             } else {
-                recordingVideoEncoder.requestSyncFrame()
+                SplitSyncFrameRequestPolicy.retryDelays(
+                    hasWatermarkTransition = false,
+                    timeoutMs = SPLIT_TIMEOUT_MS,
+                ).forEach { delayMs ->
+                    handler.postDelayed({
+                        if (splitResult === result) {
+                            recordingVideoEncoder.requestSyncFrame()
+                        }
+                    }, delayMs)
+                }
             }
             handler.postDelayed({
                 if (splitResult === result) {
@@ -2903,12 +2949,7 @@ class ContinuousSegmentCamera(
             ),
         )
 
-    private fun ensureParent(path: String) {
-        File(path).parentFile?.mkdirs()
-    }
-
-    private fun hasRecordingReserve(path: String): Boolean = runCatching {
-        val parent = File(path).parentFile ?: activity.filesDir
+    private fun hasRecordingReserve(parent: File): Boolean = runCatching {
         StatFs(parent.path).availableBytes >=
             BackupStoragePolicyStore.current(activity).minimumBytes
     }.getOrDefault(false)

@@ -38,7 +38,11 @@ internal object SplitVideoSamplePolicy {
         isKeyFrame: Boolean,
         transitionPtsUs: Long?,
     ): SplitVideoSampleAction {
-        val transition = transitionPtsUs ?: return SplitVideoSampleAction.WRITE_CURRENT
+        val transition = transitionPtsUs ?: return if (isKeyFrame) {
+            SplitVideoSampleAction.ROTATE
+        } else {
+            SplitVideoSampleAction.WRITE_CURRENT
+        }
         if (samplePtsUs < transition) return SplitVideoSampleAction.WRITE_CURRENT
         return if (isKeyFrame) {
             SplitVideoSampleAction.ROTATE
