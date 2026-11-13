@@ -67,7 +67,11 @@ jobs:
           $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss')
           $shortSha = '${{ github.sha }}'.Substring(0, 8)
           $tag = "build-$timestamp-$shortSha"
-          $apk = Get-ChildItem dist/android/PackingProof-Mobile-*.apk -File | Select-Object -Single
+          $apks = @(Get-ChildItem dist/android/PackingProof-Mobile-*.apk -File)
+          if ($apks.Count -ne 1) {
+            throw "预期生成 1 个 APK，实际找到 $($apks.Count) 个"
+          }
+          $apk = $apks[0]
           $manifest = Get-Item dist/android/build-manifest.json
           $notes = @"
           自动构建提交：${{ github.sha }}
